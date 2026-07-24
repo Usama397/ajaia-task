@@ -19,6 +19,7 @@ model User {
   versions     DocumentVersion[]
   comments     Comment[]
   presence     Presence[]
+  notifications Notification[]
 }
 
 model Document {
@@ -32,6 +33,7 @@ model Document {
   versions    DocumentVersion[]
   comments    Comment[]
   presence    Presence[]
+  notifications Notification[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
@@ -109,4 +111,24 @@ model Presence {
 
   @@unique([documentId, userId])
   @@index([documentId])
+}
+
+enum NotificationType {
+  SHARE
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       NotificationType @default(SHARE)
+  actorName  String
+  message    String
+  documentId String?
+  document   Document?        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  read       Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }

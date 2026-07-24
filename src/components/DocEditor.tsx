@@ -1,15 +1,17 @@
 "use client";
 
-import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
 import { useEffect, useRef } from "react";
+import { CommentHighlight } from "@/components/extensions/CommentHighlight";
 
 export const EDITOR_EXTENSIONS = [
   StarterKit,
   Underline,
   Placeholder.configure({ placeholder: "Start writing…" }),
+  CommentHighlight,
 ];
 
 interface DocEditorProps {
@@ -17,6 +19,8 @@ interface DocEditorProps {
   editable: boolean;
   onSave: (content: JSONContent) => void;
   onSelectionChange?: (text: string) => void;
+  onEditorReady?: (editor: Editor | null) => void;
+  onCommentClick?: (commentId: string) => void;
 }
 
 function Divider() {
@@ -105,6 +109,8 @@ export default function DocEditor({
   editable,
   onSave,
   onSelectionChange,
+  onEditorReady,
+  onCommentClick,
 }: DocEditorProps) {
   const editor = useEditor({
     extensions: EDITOR_EXTENSIONS,
@@ -114,6 +120,19 @@ export default function DocEditor({
   });
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    onEditorReady?.(editor);
+    return () => onEditorReady?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
+
+  function handleContentClick(e: React.MouseEvent) {
+    if (!onCommentClick) return;
+    const span = (e.target as HTMLElement).closest?.("[data-comment-id]");
+    const id = span?.getAttribute("data-comment-id");
+    if (id) onCommentClick(id);
+  }
 
   useEffect(() => {
     if (!editor || !editable) return;
@@ -223,6 +242,7 @@ export default function DocEditor({
         )}
         <EditorContent
           editor={editor}
+          onClick={handleContentClick}
           className="doc-editor-content px-6 py-6 text-zinc-900 sm:px-10 sm:py-8 dark:text-zinc-100 [&_.ProseMirror]:min-h-[60vh] [&_.ProseMirror]:outline-none"
         />
       </div>

@@ -1,14 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import type { JSONContent } from "@tiptap/react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import ShareDialog from "@/components/ShareDialog";
 import PresenceBar from "@/components/PresenceBar";
 import ExportMenu from "@/components/ExportMenu";
 import CommentsPanel from "@/components/CommentsPanel";
 import VersionHistoryPanel from "@/components/VersionHistoryPanel";
+import { findCommentRange } from "@/components/extensions/CommentHighlight";
 import { canComment as canCommentFn, canEdit as canEditFn, canManage as canManageFn, type Permission } from "@/lib/permissions";
 
 const DocEditor = dynamic(() => import("@/components/DocEditor"), {
@@ -143,11 +144,54 @@ export default function EditorPageClient({
   const [shareOpen, setShareOpen] = useState(false);
   const [panel, setPanel] = useState<SidePanel>(null);
   const [selectedText, setSelectedText] = useState("");
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const titleTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editorRef = useRef<Editor | null>(null);
 
   const canEdit = canEditFn(permission);
   const canManage = canManageFn(permission);
   const canComment = canCommentFn(permission);
+
+  // Scroll the document to a comment's highlighted passage and flash it. DOM-based so it
+  // works in view/comment-only mode too (where the editor selection isn't shown).
+  const focusComment = useCallback((commentId: string) => {
+    setActiveCommentId(commentId);
+    const spans = document.querySelectorAll<HTMLElement>(`[data-comment-id="${commentId}"]`);
+    if (spans.length === 0) return;
+    spans[0].scrollIntoView({ behavior: "smooth", block: "center" });
+    spans.forEach((el) => el.classList.add("comment-highlight-active"));
+    window.setTimeout(() => {
+      spans.forEach((el) => el.classList.remove("comment-highlight-active"));
+    }, 1600);
+  }, []);
+
+  // Anchor a newly created comment to the current text selection by applying the mark.
+  // Anchoring writes to the document, so it's limited to users with edit rights;
+  // comment-only users still get document-level comments.
+  const anchorComment = useCallback(
+    (commentId: string) => {
+      const editor = editorRef.current;
+      if (!editor || !canEdit) return;
+      const { from, to } = editor.state.selection;
+      if (from === to) return; // no selection — comment stays document-level
+      editor.chain().focus().setTextSelection({ from, to }).setMark("commentHighlight", { commentId }).run();
+    },
+    [canEdit]
+  );
+
+  // Remove a comment's highlight from the document (e.g. when the comment is deleted).
+  const removeCommentAnchor = useCallback((commentId: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const range = findCommentRange(editor, commentId);
+    if (!range) return;
+    editor.chain().setTextSelection(range).unsetMark("commentHighlight").run();
+  }, []);
+
+  function handleCommentClickInDoc(commentId: string) {
+    setPanel("comments");
+    focusComment(commentId);
+  }
 
   async function saveTitle(next: string) {
     if (!canManage) return;
@@ -253,6 +297,10 @@ export default function EditorPageClient({
             editable={canEdit}
             onSave={handleContentSave}
             onSelectionChange={setSelectedText}
+            onEditorReady={(editor) => {
+              editorRef.current = editor;
+            }}
+            onCommentClick={handleCommentClickInDoc}
           />
         </div>
 
@@ -264,7 +312,11 @@ export default function EditorPageClient({
                 canComment={canComment}
                 canManage={canManage}
                 currentUserId={currentUserId}
-                selectedText={selectedText}
+                hasSelection={canEdit && selectedText.length > 0}
+                activeCommentId={activeCommentId}
+                onAnchorComment={anchorComment}
+                onRemoveAnchor={removeCommentAnchor}
+                onFocusComment={focusComment}
                 onClose={() => setPanel(null)}
               />
             </div>

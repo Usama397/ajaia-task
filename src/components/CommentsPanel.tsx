@@ -17,7 +17,11 @@ interface CommentsPanelProps {
   canComment: boolean;
   canManage: boolean;
   currentUserId: string;
-  selectedText: string;
+  hasSelection: boolean;
+  activeCommentId: string | null;
+  onAnchorComment: (commentId: string) => void;
+  onRemoveAnchor: (commentId: string) => void;
+  onFocusComment: (commentId: string) => void;
   onClose: () => void;
 }
 
@@ -36,12 +40,15 @@ export default function CommentsPanel({
   canComment,
   canManage,
   currentUserId,
-  selectedText,
+  hasSelection,
+  activeCommentId,
+  onAnchorComment,
+  onRemoveAnchor,
+  onFocusComment,
   onClose,
 }: CommentsPanelProps) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [body, setBody] = useState("");
-  const [attachQuote, setAttachQuote] = useState(true);
   const [loading, setLoading] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
 
@@ -72,13 +79,13 @@ export default function CommentsPanel({
     const res = await fetch(`/api/documents/${documentId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        body,
-        quote: attachQuote && selectedText ? selectedText : undefined,
-      }),
+      body: JSON.stringify({ body }),
     });
     setLoading(false);
     if (res.ok) {
+      const data = await res.json();
+      // Anchor this comment to the currently-selected passage (highlight it in the doc).
+      if (data.comment?.id) onAnchorComment(data.comment.id);
       setBody("");
       await loadComments();
     }
@@ -95,6 +102,7 @@ export default function CommentsPanel({
 
   async function deleteComment(comment: Comment) {
     await fetch(`/api/documents/${documentId}/comments/${comment.id}`, { method: "DELETE" });
+    onRemoveAnchor(comment.id);
     await loadComments();
   }
 
@@ -126,13 +134,22 @@ export default function CommentsPanel({
         ) : (
           visible.map((comment) => {
             const canDelete = comment.author.id === currentUserId || canManage;
+            const isActive = comment.id === activeCommentId;
             return (
               <div
                 key={comment.id}
-                className={`rounded-xl border p-3 ${
+                onClick={() => onFocusComment(comment.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") onFocusComment(comment.id);
+                }}
+                className={`cursor-pointer rounded-xl border p-3 transition-colors ${
                   comment.resolved
                     ? "border-zinc-200 bg-zinc-50/60 opacity-70 dark:border-zinc-800 dark:bg-zinc-800/30"
-                    : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-800/40"
+                    : isActive
+                      ? "border-indigo-300 bg-indigo-50/50 dark:border-indigo-500/40 dark:bg-indigo-500/10"
+                      : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/40 dark:hover:border-zinc-700"
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -149,11 +166,6 @@ export default function CommentsPanel({
                   <span className="ml-auto text-[11px] text-zinc-400">{timeAgo(comment.createdAt)}</span>
                 </div>
 
-                {comment.quote && (
-                  <p className="mt-2 border-l-2 border-indigo-300 pl-2 text-xs italic text-zinc-500 dark:border-indigo-500/50 dark:text-zinc-400">
-                    “{comment.quote}”
-                  </p>
-                )}
                 <p className="mt-1.5 whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">
                   {comment.body}
                 </p>
@@ -161,7 +173,10 @@ export default function CommentsPanel({
                 <div className="mt-2 flex items-center gap-3 text-xs">
                   {canComment && (
                     <button
-                      onClick={() => toggleResolved(comment)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleResolved(comment);
+                      }}
                       className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
                     >
                       {comment.resolved ? "Reopen" : "Resolve"}
@@ -169,7 +184,10 @@ export default function CommentsPanel({
                   )}
                   {canDelete && (
                     <button
-                      onClick={() => deleteComment(comment)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteComment(comment);
+                      }}
                       className="font-medium text-red-600 hover:underline dark:text-red-400"
                     >
                       Delete
@@ -193,18 +211,15 @@ export default function CommentsPanel({
 
       {canComment ? (
         <form onSubmit={handleSubmit} className="border-t border-zinc-200 p-3 dark:border-zinc-800">
-          {selectedText && (
-            <label className="mb-2 flex items-start gap-2 rounded-lg bg-indigo-50 p-2 text-xs text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
-              <input
-                type="checkbox"
-                checked={attachQuote}
-                onChange={(e) => setAttachQuote(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span className="line-clamp-2">
-                Attach selected text: <span className="italic">“{selectedText}”</span>
-              </span>
-            </label>
+          {hasSelection ? (
+            <p className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+              <span className="h-2.5 w-2.5 rounded-sm bg-amber-400" />
+              Commenting on the highlighted text
+            </p>
+          ) : (
+            <p className="mb-2 text-xs text-zinc-400 dark:text-zinc-500">
+              Tip: select text in the document first to attach your comment to it.
+            </p>
           )}
           <textarea
             value={body}

@@ -1,9 +1,20 @@
 @import "tailwindcss";
 
-:root {
+/* Drive Tailwind's `dark:` variant off a manual [data-theme="dark"] on <html>,
+   set before paint by the inline script in the root layout. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root,
+[data-theme="light"] {
   --background: #ffffff;
   --foreground: #171717;
-  color-scheme: light dark;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -11,13 +22,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-urbanist);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -173,8 +177,29 @@ body {
   color: #a1a1aa;
 }
 
-@media (prefers-color-scheme: dark) {
-  .doc-editor-content .ProseMirror p.is-editor-empty:first-child::before {
-    color: #71717a;
-  }
+[data-theme="dark"] .doc-editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  color: #71717a;
+}
+
+/* Comment anchors: highlight the passage a comment is attached to. */
+.doc-editor-content .comment-highlight {
+  background-color: rgba(250, 204, 21, 0.32);
+  border-bottom: 2px solid rgba(202, 138, 4, 0.55);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.doc-editor-content .comment-highlight:hover {
+  background-color: rgba(250, 204, 21, 0.5);
+}
+.doc-editor-content .comment-highlight.comment-highlight-active {
+  background-color: rgba(250, 204, 21, 0.7);
+  box-shadow: 0 0 0 2px rgba(202, 138, 4, 0.4);
+}
+[data-theme="dark"] .doc-editor-content .comment-highlight {
+  background-color: rgba(234, 179, 8, 0.28);
+  border-bottom-color: rgba(234, 179, 8, 0.6);
+}
+[data-theme="dark"] .doc-editor-content .comment-highlight.comment-highlight-active {
+  background-color: rgba(234, 179, 8, 0.5);
 }

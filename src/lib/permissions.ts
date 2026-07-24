@@ -49,3 +49,10 @@ const PERMISSION_LABELS: Record<SharePermission, string> = {
 export function permissionLabel(permission: SharePermission): string {
   return PERMISSION_LABELS[permission];
 }
+
+/** Verb form for prose, e.g. "edit" / "comment on" / "view". */
+export function permissionVerb(permission: SharePermission): string {
+  if (permission === "EDIT") return "edit";
+  if (permission === "COMMENT") return "comment on";
+  return "view";
+}
