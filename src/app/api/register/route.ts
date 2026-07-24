@@ -26,5 +26,24 @@ export async function POST(request: Request) {
     select: { id: true, email: true, name: true },
   });
 
+  // Convert any pending document invites addressed to this email into real shares.
+  const invites = await prisma.documentInvite.findMany({ where: { email } });
+  if (invites.length > 0) {
+    await prisma.$transaction([
+      ...invites.map((invite) =>
+        prisma.documentShare.upsert({
+          where: { documentId_userId: { documentId: invite.documentId, userId: user.id } },
+          update: { permission: invite.permission },
+          create: {
+            documentId: invite.documentId,
+            userId: user.id,
+            permission: invite.permission,
+          },
+        })
+      ),
+      prisma.documentInvite.deleteMany({ where: { email } }),
+    ]);
+  }
+
   return NextResponse.json({ user }, { status: 201 });
 }

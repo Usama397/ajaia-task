@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { shareDocumentSchema } from "@/lib/validation";
 import { canManage, getEffectivePermission } from "@/lib/permissions";
+import { sendShareInviteEmail, sendShareNotificationEmail } from "@/lib/email";
 
 async function requireOwner(documentId: string, userId: string) {
   const document = await prisma.document.findUnique({
@@ -24,13 +25,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!document) return NextResponse.json({ error: "Document not found" }, { status: 404 });
   if (!ok) return NextResponse.json({ error: "Only the owner can view sharing" }, { status: 403 });
 
-  const shares = await prisma.documentShare.findMany({
-    where: { documentId: id },
-    include: { user: { select: { id: true, name: true, email: true } } },
-    orderBy: { createdAt: "asc" },
-  });
+  const [shares, invites] = await Promise.all([
+    prisma.documentShare.findMany({
+      where: { documentId: id },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.documentInvite.findMany({
+      where: { documentId: id },
+      select: { id: true, email: true, permission: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
 
-  return NextResponse.json({ shares });
+  return NextResponse.json({ shares, invites });
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -51,22 +59,52 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     );
   }
 
-  const targetUser = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  if (!targetUser) {
-    return NextResponse.json({ error: "No user found with that email" }, { status: 404 });
-  }
-  if (targetUser.id === session.user.id) {
-    return NextResponse.json({ error: "You already own this document" }, { status: 400 });
+  const { email, permission } = parsed.data;
+  const inviterName = session.user.name ?? session.user.email ?? "Someone";
+
+  const targetUser = await prisma.user.findUnique({ where: { email } });
+
+  if (targetUser) {
+    if (targetUser.id === session.user.id) {
+      return NextResponse.json({ error: "You already own this document" }, { status: 400 });
+    }
+
+    const share = await prisma.documentShare.upsert({
+      where: { documentId_userId: { documentId: id, userId: targetUser.id } },
+      update: { permission },
+      create: { documentId: id, userId: targetUser.id, permission },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    const { sent } = await sendShareNotificationEmail({
+      to: email,
+      inviterName,
+      documentTitle: document.title,
+      permission,
+      documentId: id,
+    }).catch(() => ({ sent: false }));
+
+    return NextResponse.json({ share, emailSent: sent }, { status: 201 });
   }
 
-  const share = await prisma.documentShare.upsert({
-    where: { documentId_userId: { documentId: id, userId: targetUser.id } },
-    update: { permission: parsed.data.permission },
-    create: { documentId: id, userId: targetUser.id, permission: parsed.data.permission },
-    include: { user: { select: { id: true, name: true, email: true } } },
+  // Not a registered user yet — create a pending invite and email them.
+  const invite = await prisma.documentInvite.upsert({
+    where: { documentId_email: { documentId: id, email } },
+    update: { permission },
+    create: { documentId: id, email, permission, invitedById: session.user.id },
+    select: { id: true, email: true, permission: true, createdAt: true, token: true },
   });
 
-  return NextResponse.json({ share }, { status: 201 });
+  const { sent } = await sendShareInviteEmail({
+    to: email,
+    inviterName,
+    documentTitle: document.title,
+    permission,
+    token: invite.token,
+  }).catch(() => ({ sent: false }));
+
+  const { token: _token, ...invitePublic } = invite;
+  return NextResponse.json({ invite: invitePublic, emailSent: sent }, { status: 201 });
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -78,8 +116,16 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!document) return NextResponse.json({ error: "Document not found" }, { status: 404 });
   if (!ok) return NextResponse.json({ error: "Only the owner can revoke access" }, { status: 403 });
 
-  const userId = new URL(request.url).searchParams.get("userId");
-  if (!userId) return NextResponse.json({ error: "userId is required" }, { status: 400 });
+  const url = new URL(request.url);
+  const userId = url.searchParams.get("userId");
+  const inviteId = url.searchParams.get("inviteId");
+
+  if (inviteId) {
+    await prisma.documentInvite.deleteMany({ where: { documentId: id, id: inviteId } });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (!userId) return NextResponse.json({ error: "userId or inviteId is required" }, { status: 400 });
 
   await prisma.documentShare.deleteMany({ where: { documentId: id, userId } });
   return NextResponse.json({ ok: true });

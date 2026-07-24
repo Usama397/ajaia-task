@@ -17,5 +17,14 @@ export const updateDocumentSchema = z.object({
 
 export const shareDocumentSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email"),
-  permission: z.enum(["VIEW", "EDIT"]),
+  permission: z.enum(["VIEW", "COMMENT", "EDIT"]),
+});
+
+export const createCommentSchema = z.object({
+  body: z.string().trim().min(1, "Comment cannot be empty").max(5000),
+  quote: z.string().trim().max(1000).optional(),
+});
+
+export const updateCommentSchema = z.object({
+  resolved: z.boolean(),
 });

@@ -26,6 +26,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
       initialTitle={document.title}
       initialContent={document.contentJson as JSONContent}
       permission={permission === "NONE" ? "VIEW" : permission}
+      currentUserId={session.user.id}
     />
   );
 }

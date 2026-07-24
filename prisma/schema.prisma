@@ -8,30 +8,39 @@ datasource db {
 }
 
 model User {
-  id           String          @id @default(cuid())
+  id           String            @id @default(cuid())
   name         String?
-  email        String          @unique
+  email        String            @unique
   passwordHash String
-  createdAt    DateTime        @default(now())
-  documents    Document[]      @relation("OwnedDocuments")
+  createdAt    DateTime          @default(now())
+  documents    Document[]        @relation("OwnedDocuments")
   sharedWithMe DocumentShare[]
+  sentInvites  DocumentInvite[]  @relation("SentInvites")
+  versions     DocumentVersion[]
+  comments     Comment[]
+  presence     Presence[]
 }
 
 model Document {
-  id          String          @id @default(cuid())
+  id          String            @id @default(cuid())
   title       String
   contentJson Json
   ownerId     String
-  owner       User            @relation("OwnedDocuments", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       User              @relation("OwnedDocuments", fields: [ownerId], references: [id], onDelete: Cascade)
   shares      DocumentShare[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  invites     DocumentInvite[]
+  versions    DocumentVersion[]
+  comments    Comment[]
+  presence    Presence[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@index([ownerId])
 }
 
 enum SharePermission {
   VIEW
+  COMMENT
   EDIT
 }
 
@@ -46,4 +55,58 @@ model DocumentShare {
 
   @@unique([documentId, userId])
   @@index([userId])
+}
+
+model DocumentInvite {
+  id          String          @id @default(cuid())
+  documentId  String
+  document    Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  email       String
+  permission  SharePermission @default(EDIT)
+  invitedById String
+  invitedBy   User            @relation("SentInvites", fields: [invitedById], references: [id], onDelete: Cascade)
+  token       String          @unique @default(cuid())
+  createdAt   DateTime        @default(now())
+
+  @@unique([documentId, email])
+  @@index([email])
+}
+
+model DocumentVersion {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  title       String
+  contentJson Json
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([documentId])
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body       String
+  quote      String?
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
+}
+
+model Presence {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastSeenAt DateTime @default(now())
+
+  @@unique([documentId, userId])
+  @@index([documentId])
 }

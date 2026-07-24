@@ -3,17 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updateDocumentSchema } from "@/lib/validation";
-import { canEdit, canManage, canView, getEffectivePermission } from "@/lib/permissions";
-
-async function loadDocWithPermission(documentId: string, userId: string) {
-  const document = await prisma.document.findUnique({
-    where: { id: documentId },
-    include: { shares: true },
-  });
-  if (!document) return { document: null, permission: "NONE" as const };
-  const permission = getEffectivePermission(document, userId, document.shares);
-  return { document, permission };
-}
+import { canEdit, canManage, canView } from "@/lib/permissions";
+import { loadDocWithPermission } from "@/lib/document-access";
+import { shouldSnapshot } from "@/lib/versioning";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -63,6 +55,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   if (wantsContentChange && !canEdit(permission)) {
     return NextResponse.json({ error: "You only have view access to this document" }, { status: 403 });
+  }
+
+  // Snapshot the pre-edit state into version history (throttled) before overwriting content.
+  if (wantsContentChange) {
+    const lastVersion = await prisma.documentVersion.findFirst({
+      where: { documentId: id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    if (shouldSnapshot(lastVersion?.createdAt ?? null)) {
+      await prisma.documentVersion.create({
+        data: {
+          documentId: id,
+          title: document.title,
+          contentJson: document.contentJson as object,
+          createdById: session.user.id,
+        },
+      });
+    }
   }
 
   const updated = await prisma.document.update({

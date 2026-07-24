@@ -87,3 +87,22 @@ checking toolbar button states, the share dialog's visual layout, and autosave's
 "Saving…/Saved" indicator timing — is the one verification step I'd still recommend
 before treating this as fully UX-validated, and it's the first thing to do before
 recording the walkthrough video.
+
+## Addendum: adding `.docx` import (follow-up request)
+
+`.docx` was originally scoped out (see `ARCHITECTURE.md`'s original reasoning). When
+asked to add it, I used `mammoth` to extract the `.docx` as HTML server-side, and wrote a
+small HTML → Tiptap-JSON mapper (`htmlToTiptapDoc`) kept deliberately separate from the
+mammoth-specific extraction step (`docxToTiptapDoc`) so the conversion logic is unit
+testable with plain HTML strings rather than a binary fixture.
+
+This is a case where hand-written unit-test fixtures would have hidden a real bug: my
+first-pass HTML fixtures for the unit tests included `<u>underlined</u>` directly, so
+they passed — but they were testing the mapper, not the actual mammoth output. Generating
+a real `.docx` (via a throwaway, not-committed use of the `docx` npm package) and running
+it through the live import endpoint against the actual dev server surfaced that
+**mammoth silently drops underline formatting by default** — it maps bold/italic to
+`<strong>`/`<em>` out of the box but requires an explicit style map for underline. Fixed
+by passing `styleMap: ["u => u"]` to `mammoth.convertToHtml`. This is the same lesson as
+the rest of this note: a real round-trip through the actual dependency caught something a
+mock or a hand-authored fixture could not have.

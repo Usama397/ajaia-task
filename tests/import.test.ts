@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   fileToTiptapDoc,
+  htmlToTiptapDoc,
   markdownToTiptapDoc,
   plainTextToTiptapDoc,
   UnsupportedFileError,
@@ -51,18 +52,49 @@ describe("markdownToTiptapDoc", () => {
   });
 });
 
+describe("htmlToTiptapDoc (the mammoth .docx -> HTML output shape)", () => {
+  it("converts headings, capped at level 3", () => {
+    const doc = htmlToTiptapDoc("<h1>Title</h1><h4>Deep heading</h4>");
+    expect(doc.content[0]).toMatchObject({ type: "heading", attrs: { level: 1 } });
+    expect(doc.content[1]).toMatchObject({ type: "heading", attrs: { level: 3 } });
+  });
+
+  it("converts bold, italic, and underline into marked text nodes", () => {
+    const doc = htmlToTiptapDoc("<p>This is <strong>bold</strong>, <em>italic</em>, and <u>underlined</u>.</p>");
+    const nodes = doc.content[0].content ?? [];
+    expect(nodes.find((n) => n.text === "bold")?.marks).toEqual([{ type: "bold" }]);
+    expect(nodes.find((n) => n.text === "italic")?.marks).toEqual([{ type: "italic" }]);
+    expect(nodes.find((n) => n.text === "underlined")?.marks).toEqual([{ type: "underline" }]);
+  });
+
+  it("converts bullet and numbered lists", () => {
+    const doc = htmlToTiptapDoc("<ul><li>one</li><li>two</li></ul><ol><li>first</li></ol>");
+    expect(doc.content[0].type).toBe("bulletList");
+    expect(doc.content[0].content).toHaveLength(2);
+    expect(doc.content[1].type).toBe("orderedList");
+    expect(doc.content[1].content).toHaveLength(1);
+  });
+
+  it("returns a single empty paragraph for empty input", () => {
+    const doc = htmlToTiptapDoc("");
+    expect(doc.content).toEqual([{ type: "paragraph" }]);
+  });
+});
+
 describe("fileToTiptapDoc", () => {
-  it("routes .md files through the markdown converter", () => {
-    const doc = fileToTiptapDoc("notes.md", "# Hello");
+  it("routes .md files through the markdown converter", async () => {
+    const doc = await fileToTiptapDoc("notes.md", Buffer.from("# Hello", "utf-8"));
     expect(doc.content[0].type).toBe("heading");
   });
 
-  it("routes .txt files through the plain text converter", () => {
-    const doc = fileToTiptapDoc("notes.txt", "Hello\n\nWorld");
+  it("routes .txt files through the plain text converter", async () => {
+    const doc = await fileToTiptapDoc("notes.txt", Buffer.from("Hello\n\nWorld", "utf-8"));
     expect(doc.content).toHaveLength(2);
   });
 
-  it("rejects unsupported file types", () => {
-    expect(() => fileToTiptapDoc("resume.docx", "content")).toThrow(UnsupportedFileError);
+  it("rejects unsupported file types", async () => {
+    await expect(fileToTiptapDoc("resume.pdf", Buffer.from("content"))).rejects.toThrow(
+      UnsupportedFileError
+    );
   });
 });

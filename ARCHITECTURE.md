@@ -35,10 +35,10 @@ under time pressure and expensive to get wrong in a real product.
 
 Storing the ProseMirror/Tiptap JSON document (rather than rendered HTML) in Postgres
 means the editor can round-trip content exactly, and the same JSON shape is the target
-format for file import — `.txt` and `.md` files are converted into that JSON server-side
-(`src/lib/import.ts`) using the same node/mark vocabulary the editor produces, so an
-imported document is indistinguishable from a hand-typed one and can be edited normally
-afterward.
+format for file import — `.txt`, `.md`, and `.docx` files are all converted into that
+JSON server-side (`src/lib/import.ts`) using the same node/mark vocabulary the editor
+produces, so an imported document is indistinguishable from a hand-typed one and can be
+edited normally afterward.
 
 ### File import: turn the file into a document, not an attachment
 
@@ -46,8 +46,18 @@ The assignment offered a choice between "upload becomes a new document" and "upl
 an attachment on a document." I chose the former — it's the more product-relevant
 interpretation for a docs tool (you paste in existing notes and start editing them), and
 it avoids standing up a blob-storage dependency (S3, etc.) for something that isn't core
-to the assignment. `.docx` was cut for the same reason: binary parsing is a real time
-sink for low marginal grading value versus `.txt`/`.md`.
+to the assignment.
+
+`.docx` import is layered on top of the same target format: `mammoth` extracts the
+`.docx`'s content as semantic HTML server-side, and a small HTML → Tiptap-JSON mapper
+(`htmlToTiptapDoc`, kept separate from the docx-specific extraction step so it's unit
+testable without a binary fixture) converts that into the identical node/mark shape the
+markdown importer produces. One caveat worth flagging explicitly: Mammoth maps bold and
+italic to `<strong>`/`<em>` by default but silently drops underline formatting unless you
+hand it a style map — this repo passes `styleMap: ["u => u"]` to restore it. It's the
+kind of default that's easy to miss without a real `.docx` round-trip test (a handwritten
+HTML fixture would have hidden the bug, since I'd have written `<u>` into the fixture
+myself instead of discovering mammoth doesn't emit it).
 
 ### Autosave over explicit save, last-write-wins over real-time merge
 
@@ -56,29 +66,41 @@ Saved/Saving/Save failed indicator. This is honest about what's being demonstrat
 usable single-editor experience with reliable persistence, not concurrent multi-user
 editing (that's a CRDT/OT problem that doesn't fit in this timebox — see below).
 
-## Scope cuts (explicit)
+## Stretch features (all five implemented)
 
-- **No real-time collaboration.** Two people editing the same document simultaneously
-  will silently overwrite each other on save (last write wins). Building real
-  conflict-free concurrent editing (Yjs/CRDT) is a multi-day problem on its own; doing it
-  badly would be worse than not doing it.
-- **File import is `.txt`/`.md` only**, not `.docx`. Stated in the UI (file picker
-  `accept` attribute) and in the README.
-- **Sharing has two levels — View and Edit — not granular ACLs.** No org/team concept,
-  no link-sharing, no expiring invites.
-- **No version history / comments / suggestion mode.** Listed as stretch goals in the
-  assignment; skipped in favor of hardening the core slice given the time available.
+The assignment listed five optional stretch enhancements; all are built. Design notes and
+the deliberate scoping of each:
 
-## What I'd build next with 2-4 more hours
+- **Real-time collaboration indicators** — a `Presence` row per (document, user) is
+  updated by a heartbeat every 10s from the open editor; the header shows avatars of
+  everyone seen within the last 30s. **Polling, not WebSockets** — it works on Vercel's
+  serverless model with zero extra infrastructure, and "who's here" indicators don't need
+  sub-second latency. This is presence, not concurrent editing (see remaining cut below).
+- **Commenting** — `Comment` rows are document-level, with an optional `quote` captured
+  from the current editor text selection, plus resolve/reopen and delete. **Deliberately
+  not anchored to live text ranges**: pinning a comment to character offsets means every
+  edit has to re-map every anchor, which silently corrupts under concurrent edits. A
+  quoted snapshot is robust and still gives the "comment on this passage" affordance.
+- **Version history** — the *pre-edit* state is snapshotted into `DocumentVersion` on
+  content save, **throttled to at most once per minute** (`lib/versioning.ts`) so autosave
+  doesn't flood the table. Restore is transactional and itself reversible (it snapshots
+  the current state first). The throttle rule is a pure function with unit tests.
+- **Export** — `lib/export.ts` serializes Tiptap JSON to Markdown and to HTML directly
+  (no DOM-dependent library, so it runs safely in a serverless route). PDF reuses the HTML
+  path through a print-optimized standalone page that auto-opens the browser print dialog —
+  dependency-free and cross-platform, versus bundling a headless-Chrome PDF renderer.
+- **Role-based permissions beyond basic access** — the `SharePermission` enum gained a
+  **COMMENT** tier (View < Comment < Edit), enforced everywhere through the single
+  `getEffectivePermission` + `canView`/`canComment`/`canEdit`/`canManage` helpers. Sharing
+  also works **by email before signup**: unknown recipients get a `DocumentInvite` that
+  auto-converts to a real share on registration, with optional email notification.
 
-1. **Version history** — cheapest high-value addition: snapshot `contentJson` on each
-   save (or every N saves) into a `DocumentVersion` table, with a simple "restore this
-   version" action.
-2. **Real-time presence** (not full collaborative editing) — show "Bob is viewing this
-   document" via a lightweight polling or WebSocket presence channel; sets up the UI
-   groundwork for real CRDT-based editing later without committing to it now.
-3. **Export to Markdown/PDF** — the Tiptap JSON → Markdown direction is a natural inverse
-   of the import path already built.
-4. **Better conflict handling** — even short of full real-time editing, detecting
-   "this document changed since you loaded it" and warning before an autosave overwrites
-   newer content would meaningfully reduce the last-write-wins risk.
+## Remaining scope cut
+
+- **True concurrent (multi-cursor) editing.** Two people editing simultaneously still use
+  last-write-wins on save — presence indicators surface *that* it's happening, but a real
+  CRDT/OT merge (Yjs) is a multi-day effort and out of scope. The natural next step:
+  swap the autosave PATCH for a Yjs document synced over a provider, keeping the existing
+  presence, comments, versions, and export layers on top.
+- **`.docx` import fidelity.** Only text-level formatting carries over (headings,
+  bold/italic/underline, lists); images, tables, and embedded objects flatten to text.

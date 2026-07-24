@@ -1,8 +1,9 @@
 # Ajaia Docs
 
 A lightweight, Google-Docs-inspired collaborative document editor: create and format
-documents, import `.txt`/`.md` files as new documents, share documents with other users
-with View/Edit permissions, and persist everything in Postgres.
+documents, import `.txt`/`.md`/`.docx` files, share with role-based permissions, comment,
+track version history, see who else is editing in real time, and export — all persisted
+in Postgres.
 
 ## Stack
 
@@ -10,15 +11,43 @@ with View/Edit permissions, and persist everything in Postgres.
 - **Prisma 6 + PostgreSQL** — persistence (tested against [Neon](https://neon.tech)'s free tier)
 - **NextAuth v4** (Credentials provider, JWT sessions) + `bcryptjs` — real email/password auth
 - **Tiptap** — rich-text editor (bold, italic, underline, H1/H2, bullet/numbered lists)
+- **Mammoth** — converts uploaded `.docx` files to HTML server-side for import
 - **Zod** — request validation on every API route
 - **Vitest** — unit tests
 
+## Features
+
+- **Rich-text editing** — bold, italic, underline, H1/H2, bullet/numbered lists; debounced
+  autosave with a live save-status indicator; empty-document placeholder.
+- **File import** — `.txt`, `.md`, and `.docx` become new editable documents (see below).
+- **Role-based sharing** — grant another user **View**, **Comment**, or **Edit** access;
+  share by email even before they've signed up (a pending invite auto-converts to a share
+  on registration); optional email notifications; revoke anytime. Owned vs. shared
+  documents are visually separated on the dashboard.
+- **Comments** — document-level comments with an optional quoted text selection, resolve/
+  reopen, and delete (by author or owner). Commenters (View+Comment role) can comment but
+  not edit content.
+- **Version history** — the pre-edit state is snapshotted automatically as the document is
+  edited (throttled to at most once per minute to avoid row bloat); restore any prior
+  version (the restore is itself reversible, since the current state is snapshotted first).
+- **Real-time presence indicators** — avatars of everyone currently viewing/editing a
+  document, via a lightweight polling heartbeat (no WebSocket infrastructure required).
+- **Export** — download as **Markdown** or **HTML**, or **Save as PDF** via a clean
+  print-optimized page.
+
 ## Supported file imports
 
-Only **`.txt`** and **`.md`/`.markdown`** files can be imported (2MB max). Uploading a file
-converts it into a brand-new document owned by the uploader — `.txt` becomes paragraphs,
-`.md` is parsed (headings, bold/italic, bullet/numbered lists) into the same rich-text
-format used by the editor. Other file types (e.g. `.docx`) are rejected with a clear error.
+## Supported file imports
+
+**`.txt`**, **`.md`/`.markdown`**, and **`.docx`** files can be imported (5MB max).
+Uploading a file converts it into a brand-new document owned by the uploader:
+- `.txt` becomes paragraphs (blank lines split paragraphs, single newlines become line breaks)
+- `.md` is parsed (headings, bold/italic, bullet/numbered lists) via `marked`
+- `.docx` is converted via `mammoth` (headings, bold/italic/underline, bullet/numbered
+  lists carry over; images, tables, and other formatting are flattened to plain text)
+
+All three land in the same rich-text format the editor uses, so an imported document is
+editable immediately. Other file types are rejected with a clear error.
 
 ## Local setup
 
@@ -75,9 +104,9 @@ account or use "Sign up" to create your own.
 npm run test
 ```
 
-Covers the permission matrix (`src/lib/permissions.ts`) and the file-import conversion
-(`src/lib/import.ts`) — both txt/md → rich-text conversion and rejection of unsupported
-file types.
+Covers the permission matrix incl. the Comment role (`src/lib/permissions.ts`), the
+file-import conversion (`src/lib/import.ts`), the Markdown/HTML export serializers
+(`src/lib/export.ts`), and the version-snapshot throttle (`src/lib/versioning.ts`).
 
 ## Deploying (Vercel)
 
@@ -93,6 +122,9 @@ file types.
 
 ## What's not included (scope cuts)
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full reasoning. In short: no real-time
-multi-cursor collaboration (autosave/last-write-wins instead), no `.docx` import, and
-sharing has two permission levels (View/Edit) rather than granular ACLs.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full reasoning. The main remaining cut is
+**true concurrent (multi-cursor) editing** — two people editing simultaneously still use
+last-write-wins on save, though presence indicators show when that's happening. Comments
+are document-level (with an optional quoted selection) rather than pinned to live text
+ranges, and PDF export goes through the browser's print dialog rather than server-side
+rendering.

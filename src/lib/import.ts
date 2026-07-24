@@ -1,5 +1,8 @@
 import { marked } from "marked";
 import type { Tokens } from "marked";
+import mammoth from "mammoth";
+import { parse as parseHtml, NodeType } from "node-html-parser";
+import type { HTMLElement as ParsedHTMLElement, Node as ParsedNode } from "node-html-parser";
 
 export type TiptapMark = { type: string };
 export type TiptapNode = {
@@ -11,8 +14,8 @@ export type TiptapNode = {
 };
 export type TiptapDoc = { type: "doc"; content: TiptapNode[] };
 
-export const SUPPORTED_IMPORT_EXTENSIONS = ["txt", "md", "markdown"] as const;
-export const MAX_IMPORT_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+export const SUPPORTED_IMPORT_EXTENSIONS = ["txt", "md", "markdown", "docx"] as const;
+export const MAX_IMPORT_SIZE_BYTES = 5 * 1024 * 1024; // 5MB (docx files run larger than plain text)
 
 export class UnsupportedFileError extends Error {}
 
@@ -21,17 +24,20 @@ export function getFileExtension(filename: string): string {
   return parts.length > 1 ? parts[parts.length - 1] : "";
 }
 
-/** Converts an uploaded .txt or .md file's text content into a Tiptap document. */
-export function fileToTiptapDoc(filename: string, text: string): TiptapDoc {
+/** Converts an uploaded .txt, .md, or .docx file into a Tiptap document. */
+export async function fileToTiptapDoc(filename: string, buffer: Buffer): Promise<TiptapDoc> {
   const ext = getFileExtension(filename);
   if (ext === "md" || ext === "markdown") {
-    return markdownToTiptapDoc(text);
+    return markdownToTiptapDoc(buffer.toString("utf-8"));
   }
   if (ext === "txt") {
-    return plainTextToTiptapDoc(text);
+    return plainTextToTiptapDoc(buffer.toString("utf-8"));
+  }
+  if (ext === "docx") {
+    return docxToTiptapDoc(buffer);
   }
   throw new UnsupportedFileError(
-    `Unsupported file type ".${ext || "unknown"}". Only .txt and .md files can be imported.`
+    `Unsupported file type ".${ext || "unknown"}". Only .txt, .md, and .docx files can be imported.`
   );
 }
 
@@ -173,4 +179,109 @@ function inlineTokensToNodes(tokens: Tokens.Generic[], marks: TiptapMark[] = [])
     }
   }
   return nodes;
+}
+
+/** Extracts a .docx file's content (via mammoth) as HTML, then converts that to Tiptap JSON. */
+export async function docxToTiptapDoc(buffer: Buffer): Promise<TiptapDoc> {
+  // Mammoth maps bold/italic to <strong>/<em> by default, but ignores underline
+  // unless told to — this style map makes underlined runs come through as <u>.
+  const { value: html } = await mammoth.convertToHtml({ buffer }, { styleMap: ["u => u"] });
+  return htmlToTiptapDoc(html);
+}
+
+/**
+ * Converts a constrained subset of HTML (headings, paragraphs, bold/italic/underline,
+ * bullet/numbered lists) into Tiptap JSON. This is the shape mammoth's docx conversion
+ * produces, so it's kept separate from docxToTiptapDoc to be testable without a binary
+ * .docx fixture.
+ */
+export function htmlToTiptapDoc(html: string): TiptapDoc {
+  const root = parseHtml(html);
+  const content = htmlNodesToBlocks(root.childNodes);
+  return { type: "doc", content: content.length > 0 ? content : [{ type: "paragraph" }] };
+}
+
+function htmlNodesToBlocks(nodes: ParsedNode[]): TiptapNode[] {
+  const out: TiptapNode[] = [];
+  for (const node of nodes) {
+    const mapped = htmlBlockToNode(node);
+    if (mapped) out.push(mapped);
+  }
+  return out;
+}
+
+function htmlBlockToNode(node: ParsedNode): TiptapNode | null {
+  if (node.nodeType === NodeType.TEXT_NODE) {
+    const text = node.text.trim();
+    return text ? { type: "paragraph", content: [{ type: "text", text }] } : null;
+  }
+  if (node.nodeType !== NodeType.ELEMENT_NODE) return null;
+
+  const el = node as ParsedHTMLElement;
+  const tag = el.tagName?.toLowerCase();
+
+  switch (tag) {
+    case "h1":
+    case "h2":
+    case "h3":
+    case "h4":
+    case "h5":
+    case "h6": {
+      const level = Math.min(Number(tag[1]), 3);
+      return { type: "heading", attrs: { level }, content: htmlInlineToNodes(el.childNodes) };
+    }
+    case "p":
+      return { type: "paragraph", content: htmlInlineToNodes(el.childNodes) };
+    case "ul":
+      return { type: "bulletList", content: htmlListItems(el) };
+    case "ol":
+      return { type: "orderedList", attrs: { start: 1 }, content: htmlListItems(el) };
+    case "br":
+      return null;
+    default: {
+      // Unknown block element (e.g. table, image caption): flatten to a paragraph of text.
+      const text = el.text?.trim();
+      return text ? { type: "paragraph", content: [{ type: "text", text }] } : null;
+    }
+  }
+}
+
+function htmlListItems(listEl: ParsedHTMLElement): TiptapNode[] {
+  return listEl.childNodes
+    .filter(
+      (node): node is ParsedHTMLElement =>
+        node.nodeType === NodeType.ELEMENT_NODE && (node as ParsedHTMLElement).tagName?.toLowerCase() === "li"
+    )
+    .map((li) => ({
+      type: "listItem",
+      content: [{ type: "paragraph", content: htmlInlineToNodes(li.childNodes) }],
+    }));
+}
+
+function htmlInlineToNodes(nodes: ParsedNode[], marks: TiptapMark[] = []): TiptapNode[] {
+  const out: TiptapNode[] = [];
+  for (const node of nodes) {
+    if (node.nodeType === NodeType.TEXT_NODE) {
+      const text = node.text;
+      if (text) out.push({ type: "text", text, marks: marks.length ? marks : undefined });
+      continue;
+    }
+    if (node.nodeType !== NodeType.ELEMENT_NODE) continue;
+
+    const el = node as ParsedHTMLElement;
+    const tag = el.tagName?.toLowerCase();
+
+    if (tag === "strong" || tag === "b") {
+      out.push(...htmlInlineToNodes(el.childNodes, [...marks, { type: "bold" }]));
+    } else if (tag === "em" || tag === "i") {
+      out.push(...htmlInlineToNodes(el.childNodes, [...marks, { type: "italic" }]));
+    } else if (tag === "u") {
+      out.push(...htmlInlineToNodes(el.childNodes, [...marks, { type: "underline" }]));
+    } else if (tag === "br") {
+      out.push({ type: "hardBreak" });
+    } else {
+      out.push(...htmlInlineToNodes(el.childNodes, marks));
+    }
+  }
+  return out;
 }

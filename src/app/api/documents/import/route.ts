@@ -19,13 +19,13 @@ export async function POST(request: Request) {
   }
 
   if (file.size > MAX_IMPORT_SIZE_BYTES) {
-    return NextResponse.json({ error: "File is too large (2MB max)" }, { status: 400 });
+    return NextResponse.json({ error: "File is too large (5MB max)" }, { status: 400 });
   }
 
   try {
-    const text = await file.text();
-    const contentJson = fileToTiptapDoc(file.name, text);
-    const title = file.name.replace(/\.(md|markdown|txt)$/i, "") || "Imported document";
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const contentJson = await fileToTiptapDoc(file.name, buffer);
+    const title = file.name.replace(/\.(md|markdown|txt|docx)$/i, "") || "Imported document";
 
     const document = await prisma.document.create({
       data: { title, contentJson: contentJson as object, ownerId: session.user.id },
