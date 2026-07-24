@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { shareDocumentSchema } from "@/lib/validation";
 import { canManage, getEffectivePermission } from "@/lib/permissions";
 import { sendShareInviteEmail, sendShareNotificationEmail } from "@/lib/email";
+import { notifyDocumentShared } from "@/lib/notifications";
 
 async function requireOwner(documentId: string, userId: string) {
   const document = await prisma.document.findUnique({
@@ -74,6 +75,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       update: { permission },
       create: { documentId: id, userId: targetUser.id, permission },
       include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    // Notify the recipient both in-app and by email.
+    await notifyDocumentShared({
+      recipientId: targetUser.id,
+      actorName: inviterName,
+      documentId: id,
+      documentTitle: document.title,
+      permission,
     });
 
     const { sent } = await sendShareNotificationEmail({

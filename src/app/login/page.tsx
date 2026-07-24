@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,6 +39,10 @@ export default function LoginPage() {
       <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-zinc-50 via-white to-zinc-50 dark:from-zinc-950 dark:via-zinc-950 dark:to-zinc-900" />
       <div className="pointer-events-none absolute -left-32 -top-40 -z-10 h-80 w-80 rounded-full bg-indigo-400/20 blur-3xl dark:bg-indigo-500/10" />
       <div className="pointer-events-none absolute -bottom-40 -right-32 -z-10 h-80 w-80 rounded-full bg-violet-400/20 blur-3xl dark:bg-violet-500/10" />
+
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
 
       <div className="w-full max-w-sm animate-fade-in-up">
         <div className="rounded-2xl border border-zinc-200/80 bg-white/80 p-8 shadow-xl shadow-zinc-900/5 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/70 dark:shadow-black/20">

@@ -37,11 +37,18 @@ async function send(to: string, subject: string, html: string, text: string): Pr
 }
 
 function layout(inner: string) {
-  return `<!doctype html><html><body style="margin:0;background:#f4f4f5;padding:24px;font-family:'Urbanist',Arial,sans-serif;">
+  // Email-safe markup: table-based logo lockup with line-height centering (flexbox is
+  // unsupported in Outlook). A solid white badge with a brand-indigo "A" renders crisply
+  // everywhere and degrades to a square where border-radius is ignored (older Outlook).
+  return `<!doctype html><html><body style="margin:0;background:#f4f4f5;padding:24px;font-family:Arial,Helvetica,sans-serif;">
     <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e4e4e7;">
-      <div style="background:linear-gradient(135deg,#6366f1,#7c3aed);padding:24px;text-align:center;">
-        <span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.15);color:#fff;font-size:18px;font-weight:700;">A</span>
-        <div style="color:#fff;font-size:18px;font-weight:600;margin-top:8px;">Ajaia Docs</div>
+      <div style="background:#6d28d9;background:linear-gradient(135deg,#6366f1,#7c3aed);padding:28px 24px;text-align:center;">
+        <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+          <tr>
+            <td style="width:48px;height:48px;background:#ffffff;border-radius:12px;text-align:center;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;font-size:24px;font-weight:bold;color:#6d28d9;line-height:48px;">A</td>
+          </tr>
+        </table>
+        <div style="color:#ffffff;font-size:18px;font-weight:bold;margin-top:12px;letter-spacing:.3px;">Ajaia Docs</div>
       </div>
       <div style="padding:28px 28px 32px;color:#27272a;font-size:15px;line-height:1.6;">${inner}</div>
     </div>

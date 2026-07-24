@@ -76,11 +76,15 @@ the deliberate scoping of each:
   everyone seen within the last 30s. **Polling, not WebSockets** — it works on Vercel's
   serverless model with zero extra infrastructure, and "who's here" indicators don't need
   sub-second latency. This is presence, not concurrent editing (see remaining cut below).
-- **Commenting** — `Comment` rows are document-level, with an optional `quote` captured
-  from the current editor text selection, plus resolve/reopen and delete. **Deliberately
-  not anchored to live text ranges**: pinning a comment to character offsets means every
-  edit has to re-map every anchor, which silently corrupts under concurrent edits. A
-  quoted snapshot is robust and still gives the "comment on this passage" affordance.
+- **Commenting** — comments are **anchored to the highlighted passage** via a custom
+  Tiptap mark (`commentHighlight`, carrying the comment's id) rather than raw character
+  offsets: ProseMirror re-maps marks automatically as surrounding text changes, so the
+  anchor follows the right words through edits instead of silently drifting. Selecting
+  text and commenting highlights that span; clicking a comment scrolls to and flashes its
+  highlight, and clicking a highlight opens its comment — a two-way link. Because the
+  anchor lives in the document content, applying it needs edit rights; comment-only users
+  still get (unanchored) document-level comments. Resolve/reopen and delete are supported
+  (deleting also removes the highlight). The mark is stripped from Markdown/HTML/PDF export.
 - **Version history** — the *pre-edit* state is snapshotted into `DocumentVersion` on
   content save, **throttled to at most once per minute** (`lib/versioning.ts`) so autosave
   doesn't flood the table. Restore is transactional and itself reversible (it snapshots

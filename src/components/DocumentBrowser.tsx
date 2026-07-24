@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export interface DocItem {
@@ -31,6 +32,48 @@ function DocIcon({ className = "h-4 w-4" }: { className?: string }) {
         clipRule="evenodd"
       />
     </svg>
+  );
+}
+
+function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" className={className}>
+      <path
+        fillRule="evenodd"
+        d="M8.75 1a1 1 0 0 0-.96.725L7.538 2.5H4a.75.75 0 0 0 0 1.5h.35l.63 11.34A2 2 0 0 0 6.976 17h6.048a2 2 0 0 0 1.996-1.66L15.65 4H16a.75.75 0 0 0 0-1.5h-3.538l-.252-.775A1 1 0 0 0 11.25 1h-2.5ZM8.6 7.25a.75.75 0 0 1 1.5 0l.25 5.5a.75.75 0 0 1-1.5.068l-.25-5.5A.75.75 0 0 1 8.6 7.25Zm3.05-.068a.75.75 0 0 0-1.5-.068l-.25 5.5a.75.75 0 1 0 1.5.068l.25-5.5Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+function DeleteButton({
+  onDelete,
+  variant,
+}: {
+  onDelete: () => void;
+  variant: "grid" | "list";
+}) {
+  const base =
+    "flex items-center justify-center rounded-lg text-zinc-500 shadow-sm transition-all hover:bg-red-50 hover:text-red-600 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:text-zinc-400 dark:hover:bg-red-500/15 dark:hover:text-red-400";
+  const perVariant =
+    variant === "grid"
+      ? "absolute right-2 top-2 z-10 h-8 w-8 border border-zinc-200 bg-white/90 opacity-0 backdrop-blur-sm group-hover:opacity-100 dark:border-zinc-700 dark:bg-zinc-900/90"
+      : "h-8 w-8 opacity-0 group-hover:opacity-100";
+  return (
+    <button
+      type="button"
+      aria-label="Delete document"
+      title="Delete document"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDelete();
+      }}
+      className={`${base} ${perVariant}`}
+    >
+      <TrashIcon className="h-4 w-4" />
+    </button>
   );
 }
 
@@ -80,62 +123,72 @@ function Thumbnail({ html }: { html: string }) {
   );
 }
 
-function GridCard({ doc }: { doc: DocItem }) {
+function GridCard({ doc, onDelete }: { doc: DocItem; onDelete?: () => void }) {
   return (
-    <Link
-      href={`/documents/${doc.id}`}
-      className="group flex h-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-500/10 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-indigo-500/50 dark:hover:shadow-black/30"
-    >
-      <Thumbnail html={doc.previewHtml} />
-      <div className="flex flex-1 flex-col gap-2 p-3">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="line-clamp-2 text-sm font-medium text-zinc-900 group-hover:text-indigo-600 dark:text-zinc-100 dark:group-hover:text-indigo-400">
-            {doc.title}
-          </h3>
-          <PermissionBadge permission={doc.permission} />
+    <div className="group relative h-full">
+      {onDelete && <DeleteButton onDelete={onDelete} variant="grid" />}
+      <Link
+        href={`/documents/${doc.id}`}
+        className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-500/10 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-indigo-500/50 dark:hover:shadow-black/30"
+      >
+        <Thumbnail html={doc.previewHtml} />
+        <div className="flex flex-1 flex-col gap-2 p-3">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="line-clamp-2 text-sm font-medium text-zinc-900 group-hover:text-indigo-600 dark:text-zinc-100 dark:group-hover:text-indigo-400">
+              {doc.title}
+            </h3>
+            <PermissionBadge permission={doc.permission} />
+          </div>
+          <div className="mt-auto flex items-center gap-1.5 text-xs text-zinc-400 dark:text-zinc-500">
+            <span className="flex h-4 w-4 items-center justify-center rounded text-indigo-500 dark:text-indigo-400">
+              <DocIcon className="h-3.5 w-3.5" />
+            </span>
+            <span className="truncate">
+              {doc.ownerLabel ? `${doc.ownerLabel} · ` : ""}
+              {doc.updatedLabel}
+            </span>
+          </div>
         </div>
-        <div className="mt-auto flex items-center gap-1.5 text-xs text-zinc-400 dark:text-zinc-500">
-          <span className="flex h-4 w-4 items-center justify-center rounded text-indigo-500 dark:text-indigo-400">
-            <DocIcon className="h-3.5 w-3.5" />
-          </span>
-          <span className="truncate">
-            {doc.ownerLabel ? `${doc.ownerLabel} · ` : ""}
-            {doc.updatedLabel}
-          </span>
-        </div>
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 
-function ListRow({ doc }: { doc: DocItem }) {
+function ListRow({ doc, onDelete }: { doc: DocItem; onDelete?: () => void }) {
   return (
-    <Link
-      href={`/documents/${doc.id}`}
-      className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
-    >
-      <span className="flex min-w-0 items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
-          <DocIcon />
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate font-medium text-zinc-900 dark:text-zinc-100">
-            {doc.title}
+    <div className="group relative flex items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
+      <Link
+        href={`/documents/${doc.id}`}
+        className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3"
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
+            <DocIcon />
           </span>
-          {doc.ownerLabel && (
-            <span className="block truncate text-xs text-zinc-400 dark:text-zinc-500">
-              {doc.ownerLabel}
+          <span className="min-w-0">
+            <span className="block truncate font-medium text-zinc-900 dark:text-zinc-100">
+              {doc.title}
             </span>
-          )}
+            {doc.ownerLabel && (
+              <span className="block truncate text-xs text-zinc-400 dark:text-zinc-500">
+                {doc.ownerLabel}
+              </span>
+            )}
+          </span>
         </span>
-      </span>
-      <span className="flex shrink-0 items-center gap-2">
-        <PermissionBadge permission={doc.permission} />
-        <span className="hidden text-xs text-zinc-400 dark:text-zinc-500 sm:inline">
-          {doc.updatedLabel}
+        <span className="flex shrink-0 items-center gap-2">
+          <PermissionBadge permission={doc.permission} />
+          <span className="hidden text-xs text-zinc-400 dark:text-zinc-500 sm:inline">
+            {doc.updatedLabel}
+          </span>
         </span>
-      </span>
-    </Link>
+      </Link>
+      {onDelete && (
+        <div className="shrink-0 pr-2">
+          <DeleteButton onDelete={onDelete} variant="list" />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -144,11 +197,13 @@ function Section({
   docs,
   view,
   emptyMessage,
+  onDelete,
 }: {
   heading: string;
   docs: DocItem[];
   view: View;
   emptyMessage: string;
+  onDelete?: (doc: DocItem) => void;
 }) {
   return (
     <section className="mt-8">
@@ -161,7 +216,7 @@ function Section({
         <ul className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {docs.map((doc) => (
             <li key={doc.id}>
-              <GridCard doc={doc} />
+              <GridCard doc={doc} onDelete={onDelete ? () => onDelete(doc) : undefined} />
             </li>
           ))}
         </ul>
@@ -169,7 +224,7 @@ function Section({
         <ul className="mt-3 divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
           {docs.map((doc) => (
             <li key={doc.id}>
-              <ListRow doc={doc} />
+              <ListRow doc={doc} onDelete={onDelete ? () => onDelete(doc) : undefined} />
             </li>
           ))}
         </ul>
@@ -181,6 +236,11 @@ function Section({
 export default function DocumentBrowser({ owned, shared }: { owned: DocItem[]; shared: DocItem[] }) {
   const [view, setView] = useState<View>("grid");
   const [sort, setSort] = useState<SortKey>("modified");
+  const router = useRouter();
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<DocItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const sorter = useMemo(() => {
     return (a: DocItem, b: DocItem) =>
@@ -189,8 +249,31 @@ export default function DocumentBrowser({ owned, shared }: { owned: DocItem[]; s
         : b.updatedAt.localeCompare(a.updatedAt);
   }, [sort]);
 
-  const sortedOwned = useMemo(() => [...owned].sort(sorter), [owned, sorter]);
-  const sortedShared = useMemo(() => [...shared].sort(sorter), [shared, sorter]);
+  const sortedOwned = useMemo(
+    () => owned.filter((d) => !removedIds.has(d.id)).sort(sorter),
+    [owned, sorter, removedIds]
+  );
+  const sortedShared = useMemo(
+    () => shared.filter((d) => !removedIds.has(d.id)).sort(sorter),
+    [shared, sorter, removedIds]
+  );
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    const doc = pendingDelete;
+    setDeleting(true);
+    setDeleteError(null);
+    const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setDeleteError(data.error ?? "Could not delete this document.");
+      return;
+    }
+    setRemovedIds((prev) => new Set(prev).add(doc.id));
+    setPendingDelete(null);
+    router.refresh();
+  }
 
   return (
     <div>
@@ -251,6 +334,10 @@ export default function DocumentBrowser({ owned, shared }: { owned: DocItem[]; s
         docs={sortedOwned}
         view={view}
         emptyMessage="No documents yet. Create a new one or import a .txt / .md / .docx file to get started."
+        onDelete={(doc) => {
+          setDeleteError(null);
+          setPendingDelete(doc);
+        }}
       />
       <Section
         heading="Shared with you"
@@ -258,6 +345,62 @@ export default function DocumentBrowser({ owned, shared }: { owned: DocItem[]; s
         view={view}
         emptyMessage="Nothing here yet. Documents another person shares with you will show up in this section."
       />
+
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-zinc-900/40 px-4 backdrop-blur-sm"
+          onClick={() => !deleting && setPendingDelete(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm animate-fade-in-up rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-xl shadow-zinc-900/10 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-black/30"
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400">
+                <TrashIcon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+                  Delete document
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  Delete <span className="font-medium text-zinc-700 dark:text-zinc-200">{pendingDelete.title}</span>?
+                  This permanently removes it for everyone it&apos;s shared with and can&apos;t be undone.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <p className="mt-3 animate-shake text-sm text-red-600 dark:text-red-400">{deleteError}</p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                disabled={deleting}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deleting && (
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
+                  </svg>
+                )}
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

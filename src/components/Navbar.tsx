@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
+import ThemeToggle from "@/components/ThemeToggle";
+import NotificationBell from "@/components/NotificationBell";
 
 function getInitials(name?: string | null, email?: string | null) {
   if (name?.trim()) {
@@ -52,7 +54,10 @@ export default function Navbar() {
           Ajaia Docs
         </Link>
 
-        {user && (
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          {user && <NotificationBell />}
+          {user && (
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setOpen((v) => !v)}
@@ -119,7 +124,8 @@ export default function Navbar() {
               </div>
             )}
           </div>
-        )}
+          )}
+        </div>
       </div>
     </header>
   );
